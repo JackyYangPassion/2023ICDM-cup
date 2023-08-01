@@ -229,7 +229,7 @@ def load_data_ogb(args):
 
     data = DglNodePropPredDataset(name=args.dataset.replace('_', '-'), root=args.dataset_dir)
     g, labels = data[0]
-    g = dgl.to_homogeneous(g)
+    # g = dgl.to_homogeneous(g)
 
 
     g = dgl.add_self_loop(g)
