@@ -18,6 +18,9 @@ import numpy as np
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import Dataset
 from tqdm import tqdm
+import dgl.function as fn
+from sklearn import preprocessing as sk_prep
+
 def transform_embeddings(transform_type, data):
     if transform_type == "normalize":
         return torch.Tensor(Normalizer().fit_transform(data))
@@ -58,7 +61,7 @@ class MyDataset:
     def get_test_loader(self):
         test_data = self.get_test_data()
         if len(test_data) > 0:     
-            return torch.utils.data.DataLoader(test_data, batch_size=self.args.batch_size, shuffle=False, num_workers=6)
+            return torch.utils.data.DataLoader(test_data, batch_size=self.args.batch_size, shuffle=False, num_workers=0)
         else:
             return None
 
@@ -182,6 +185,22 @@ class TensorDatasetWrapper(TensorDataset):
         self.data = data
         self.targets = labels
 
+def graph_power(embed, g):
+    feat = embed.squeeze(0)
+
+    degs = g.in_degrees().float().clamp(min=1)
+    norm = torch.pow(degs, -0.5)
+    norm = norm.to(feat.device).unsqueeze(1)
+    for _ in range(10):
+        feat = feat * norm
+        g.ndata['h2'] = feat
+        g.update_all(fn.copy_u('h2', 'm'),
+                     fn.sum('m', 'h2'))
+        feat = g.ndata.pop('h2')
+        feat = feat * norm
+
+    return feat
+
 class NodeSet(Dataset):
     def __init__(self, node_list, labels):
         super(NodeSet, self).__init__()
@@ -211,6 +230,7 @@ class NbrSampleCollater(object):
 class Embedding_Dataset():
     def __init__(self, args):
         self.args = args
+        self.device = args.encoder_device
     def preprocess(self, graph):
         global n_node_feats
 
@@ -232,7 +252,7 @@ class Embedding_Dataset():
     def train_embeding(self, g):
         in_feats = g.ndata['feat'].shape[1]
         all_labels = g.ndata['label']
-        fanouts_train = [12, 12]
+        fanouts_train = self.args.fanouts_train
         # fanouts_test = [12,12]
 
         train_collater = NbrSampleCollater(
@@ -243,15 +263,15 @@ class Embedding_Dataset():
                                             shuffle=True, num_workers=0, pin_memory=True,
                                             collate_fn=train_collater.collate, drop_last=False)
         ggd = GGD(g,
-                  in_feats=128,
-                  n_hidden=300,
-                  n_layers=2,
-                  activation=nn.PReLU(300),
+                  in_feats=in_feats,
+                  n_hidden=self.args.encoder_hidden_dim,
+                  n_layers=self.args.encoder_layers,
+                  activation=nn.PReLU(self.args.encoder_hidden_dim),
                   dropout=0.1,
-                  proj_layers=1,
-                  gnn_encoder='gcn',
+                  proj_layers=self.args.proj_layers,
+                  gnn_encoder=self.args.gnn_encoder,
                   num_hop=1)
-
+        self.g = g
         ggd.cuda()
 
         ggd_optimizer = torch.optim.AdamW(ggd.parameters(),
@@ -266,8 +286,8 @@ class Embedding_Dataset():
 
             loss = 0
             for n_iter, (blocks, labels) in enumerate(tqdm(self.train_node_loader, desc=f'train epoch {epoch}')):
-                blocks = [block.to('cuda:0') for block in blocks[-1]]
-                labels = labels.to('cuda:0')
+                blocks = [block.to(self.device) for block in blocks[-1]]
+                labels = labels.to(self.device)
                 loss = ggd(blocks, labels, b_xent)
                 ggd_optimizer.zero_grad()
                 loss.backward()
@@ -291,16 +311,21 @@ class Embedding_Dataset():
     def get_embedding(self):
         embeds = []
         labels = []
+
         for n_iter, (blocks, label) in enumerate(
                 tqdm(self.train_node_loader, desc=f'loading embedding for evaluation')):
-            blocks = [block.to('cuda:0') for block in blocks[-1]]
-            label = label.to('cuda:0')
+            blocks = [block.to(self.device) for block in blocks[-1]]
+            label = label.to(self.device)
             embed = self.embeding_model.embed(blocks)
             embeds.append(embed.cpu())
             labels.append(label.cpu())
         l_embeds = torch.cat(embeds, dim=0)
+        g_embeds = graph_power(l_embeds, self.g)
+        embeds = l_embeds + g_embeds
+        embeds = sk_prep.normalize(X=embeds.cpu().numpy(), norm="l2")
+        embeds = torch.FloatTensor(embeds).cuda()
         l_labels = torch.cat(labels, dim=0)
-        return l_embeds, l_labels
+        return embeds, l_labels
 
     def run_embedding(self):
         train_codes, adj, train_labels, n, k, d = load_data_ogb(self.args)

@@ -13,7 +13,7 @@ import pytorch_lightning as pl
 from sklearn.metrics import normalized_mutual_info_score as NMI
 from sklearn.metrics import adjusted_rand_score as ARI
 import numpy as np
-
+import torch
 from src.datasets import CustomDataset, Embedding_Dataset
 # from src.datasets import GMM_dataset
 from src.clustering_models.clusternet_modules.clusternetasmodel import ClusterNetModel
@@ -300,7 +300,7 @@ def run_on_embeddings_hyperparams(parent_parser):
     parser.add_argument(
         "--NIW_prior_nu",
         type=float,
-        default=500,
+        default=513,
         help="Need to be at least codes_dim + 1",
     )
     parser.add_argument(
@@ -375,10 +375,49 @@ def run_on_embeddings_hyperparams(parent_parser):
     parser.add_argument(
         "--embedding_epochs",
         type=int,
-        default=2,
+        default=1,
         help="Num of training embeddings"
     )
 
+    parser.add_argument(
+        "--encoder_layers",
+        type=int,
+        default=1,
+        help = 'num of gcn in encoder '
+    )
+
+    parser.add_argument(
+        "--encoder_hidden_dim",
+        type=int,
+        default=512,
+    )
+
+    parser.add_argument(
+        "--proj_layers",
+        type=int,
+        default=1,
+        help='num of dense layer in encoder'
+    )
+
+    parser.add_argument(
+        "--gnn_encoder",
+        type=str,
+        default='gcn',
+        help='gcn/sgc'
+    )
+
+    parser.add_argument(
+        "--fanouts_train",
+        type=list,
+        default=[12,12,12],
+        help='sampled neighborhood size for each layer'
+    )
+
+    parser.add_argument(
+        "--encoder_device",
+        type=str,
+        default='cuda:0',
+    )
     return parser
 
 
@@ -459,8 +498,16 @@ if __name__ == "__main__":
     parser = parse_minimal_args(parser)
     parser = run_on_embeddings_hyperparams(parser)
     args = parser.parse_args()
-    embedding_class = Embedding_Dataset(args)
-    embedding_class.run_embedding()
-    train_codes, train_labels = embedding_class.get_embedding()
 
+    try:
+        train_codes = torch.load(os.path.join(args.dir,'x.pt'))
+        train_labels = torch.load(os.path.join(args.dir,'y.pt'))
+        print('数据已经存在')
+    except:
+        embedding_class = Embedding_Dataset(args)
+        embedding_class.run_embedding()
+        train_codes, train_labels = embedding_class.get_embedding()
+        torch.save(train_codes, os.path.join(args.dir, 'x.pt'))
+        torch.save(train_labels, os.path.join(args.dir, 'y.pt'))
+        print('数据已经保存')
     train_cluster_net(args, train_codes, train_labels)
