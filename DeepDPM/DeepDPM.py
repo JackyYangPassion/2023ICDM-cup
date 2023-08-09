@@ -57,7 +57,7 @@ def parse_minimal_args(parser):
         "--tag", type=str, default="MNIST_UMAPED",
     )
     parser.add_argument(
-        "--max_epochs", type=int, default=1000,
+        "--max_epochs", type=int, default=10,
     )
     parser.add_argument(
         "--limit_train_batches", type=float, default=1., help="used for debugging"
@@ -300,7 +300,7 @@ def run_on_embeddings_hyperparams(parent_parser):
     parser.add_argument(
         "--NIW_prior_nu",
         type=float,
-        default=513,
+        default=1000,
         help="Need to be at least codes_dim + 1",
     )
     parser.add_argument(
@@ -480,6 +480,8 @@ def train_cluster_net(args, train_codes, train_labels):
     # evaluate last model
     dataset = dataset_obj.get_train_data()
     data = dataset.data
+    model.to('cuda:0')
+    data = data.to('cuda:0')
     net_pred = model(data).argmax(axis=1).cpu().numpy()
     if args.use_labels_for_eval:
         # evaluate model using labels
