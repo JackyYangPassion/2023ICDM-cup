@@ -485,7 +485,7 @@ def train_cluster_net(args, train_codes, train_labels):
     net_pred = model(data).argmax(axis=1).cpu().numpy()
     if args.use_labels_for_eval:
         # evaluate model using labels
-        labels = dataset.targets.numpy()
+        labels = dataset.targets.cpu().numpy()
         acc = np.round(cluster_acc(labels, net_pred), 5)
         nmi = np.round(NMI(net_pred, labels), 5)
         ari = np.round(ARI(net_pred, labels), 5)
@@ -506,10 +506,5 @@ if __name__ == "__main__":
         train_labels = torch.load(os.path.join(args.dir,'y.pt'))
         print('数据已经存在')
     except:
-        embedding_class = Embedding_Dataset(args)
-        embedding_class.run_embedding()
-        train_codes, train_labels = embedding_class.get_embedding()
-        torch.save(train_codes, os.path.join(args.dir, 'x.pt'))
-        torch.save(train_labels, os.path.join(args.dir, 'y.pt'))
-        print('数据已经保存')
+        print('run train_arxiv.py first')
     train_cluster_net(args, train_codes, train_labels)
