@@ -23,15 +23,17 @@ from src.utils import check_args, cluster_acc
 def parse_minimal_args(parser):
     # Dataset parameters
     # parser.add_argument("--dir", default="./pretrained_embeddings/umap_embedded_datasets/MNIST", help="dataset directory")
+    parser.add_argument("--dirsss", default="./pretrained_embeddings/umap_embedded_datasets/ogb", help="dataset directory")
     parser.add_argument("--dir", default="./pretrained_embeddings/umap_embedded_datasets/ogb", help="dataset directory")
 
-    parser.add_argument("--dataset", default="ogbn_arxiv")
+    # 11
+    parser.add_argument("--dataset", default="ogbn-arxiv")
     # Training parameters
     parser.add_argument(
         "--lr", type=float, default=1e-4, help="learning rate (default: 1e-4)"
     )
     parser.add_argument(
-        "--batch-size", type=int, default=4096, help="input batch size for training"
+        "--batch-size", type=int, default=128, help="input batch size for training"
     )
     parser.add_argument(
         "--seed",
@@ -57,7 +59,7 @@ def parse_minimal_args(parser):
         "--tag", type=str, default="MNIST_UMAPED",
     )
     parser.add_argument(
-        "--max_epochs", type=int, default=10,
+        "--max_epochs", type=int, default=300,
     )
     parser.add_argument(
         "--limit_train_batches", type=float, default=1., help="used for debugging"
@@ -81,19 +83,19 @@ def parse_minimal_args(parser):
 def run_on_embeddings_hyperparams(parent_parser):
     parser = ArgumentParser(parents=[parent_parser], add_help=False)
     parser.add_argument(
-        "--init_k", default=20, type=int, help="number of initial clusters"
+        "--init_k", default=1, type=int, help="number of initial clusters"
     )
     parser.add_argument(
         "--clusternet_hidden",
         type=int,
-        default=300,
+        default=50,
         help="The dimensions of the hidden dim of the clusternet. Defaults to 50.",
     )
     parser.add_argument(
         "--clusternet_hidden_layer_list",
         type=int,
         nargs="+",
-        default=[300,600,300],
+        default=[50],
         help="The hidden layers in the clusternet. Defaults to [50, 50].",
     )
     parser.add_argument(
@@ -180,7 +182,7 @@ def run_on_embeddings_hyperparams(parent_parser):
     parser.add_argument(
         "--start_splitting",
         type=int,
-        default=50,
+        default=55,
     )
     parser.add_argument(
         "--alpha",
@@ -244,7 +246,7 @@ def run_on_embeddings_hyperparams(parent_parser):
     parser.add_argument(
         "--split_merge_every_n_epochs",
         type=int,
-        default=10,
+        default=30,
         help="Example: if set to 10, split proposals will be made every 10 epochs",
     )
     parser.add_argument(
@@ -300,7 +302,7 @@ def run_on_embeddings_hyperparams(parent_parser):
     parser.add_argument(
         "--NIW_prior_nu",
         type=float,
-        default=1000,
+        default=300,
         help="Need to be at least codes_dim + 1",
     )
     parser.add_argument(
@@ -317,7 +319,7 @@ def run_on_embeddings_hyperparams(parent_parser):
     parser.add_argument(
         "--prior_sigma_scale",
         type=float,
-        default=0.001,
+        default=".005",
     )
     parser.add_argument(
         "--prior_sigma_scale_step",
@@ -351,7 +353,7 @@ def run_on_embeddings_hyperparams(parent_parser):
         default="isotropic",
         choices=["diag_NIG", "isotropic", "KL_GMM_2"],
     )
-    
+
     parser.add_argument(
         "--ignore_subclusters",
         type=bool,
@@ -369,7 +371,7 @@ def run_on_embeddings_hyperparams(parent_parser):
     parser.add_argument(
         "--evaluate_every_n_epochs",
         type=int,
-        default=100,
+        default=50,
         help="How often to evaluate the net"
     )
     parser.add_argument(
@@ -502,8 +504,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        train_codes = torch.load(os.path.join(args.dir,'x.pt'))
-        train_labels = torch.load(os.path.join(args.dir,'y.pt'))
+        train_codes = torch.load(os.path.join(args.dirsss,'x.pt'))
+        train_labels = torch.load(os.path.join(args.dirsss,'y.pt'))
         print('数据已经存在')
     except:
         print('run train_arxiv.py first')

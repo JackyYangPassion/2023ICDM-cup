@@ -122,6 +122,7 @@ def main(args):
     ggd = GGD(g,
               in_feats,
               args.n_hidden,
+              args.output_dim,
               args.n_layers,
               nn.PReLU(args.n_hidden),
               args.dropout,
@@ -242,11 +243,13 @@ if __name__ == '__main__':
                         help="feature dropout rate")
     parser.add_argument("--classifier-lr", type=float, default=0.05,
                         help="classifier learning rate")
-    parser.add_argument("--n-ggd-epochs", type=int, default=1,
+    parser.add_argument("--n-ggd-epochs", type=int, default=1000,
                         help="number of training epochs")
     parser.add_argument("--n-classifier-epochs", type=int, default=6000,
                         help="number of training epochs")
     parser.add_argument("--n-hidden", type=int, default=256,
+                        help="number of hidden gcn units")
+    parser.add_argument("--output_dim", type=int, default=10,
                         help="number of hidden gcn units")
     parser.add_argument("--proj_layers", type=int, default=1,
                         help="number of project linear layers")
@@ -254,7 +257,7 @@ if __name__ == '__main__':
                         help="number of hidden gcn layers")
     parser.add_argument("--weight-decay", type=float, default=0.,
                         help="Weight for L2 loss")
-    parser.add_argument("--patience", type=int, default=500,
+    parser.add_argument("--patience", type=int, default=100,
                         help="early stop patience condition")
     parser.add_argument("--self-loop", action='store_true',
                         help="graph self-loop (default=False)")
