@@ -345,15 +345,16 @@ class CustomDataset(MyDataset):
 
     # our implementation
     def get_train_data(self):
-        # train_codes = torch.Tensor(torch.load(os.path.join(self.data_dir, "train_data.pt")))
-        # if self.args.transform_input_data:
-        #     train_codes = transform_embeddings(self.args.transform_input_data, train_codes)
-        # if self.args.use_labels_for_eval:
-        #     train_labels = torch.load(os.path.join(self.data_dir, "train_labels.pt"))
-        # else:
-        #     train_labels = torch.zeros((train_codes.size()[0]))
-
-        train_codes, train_labels = self.train_codes, self.train_labels
+        if self.args.dataset != "ogbn-arxiv":
+            train_codes = torch.Tensor(torch.load(os.path.join(self.data_dir, "train_data.pt")))
+            if self.args.transform_input_data:
+                train_codes = transform_embeddings(self.args.transform_input_data, train_codes)
+            if self.args.use_labels_for_eval:
+                train_labels = torch.load(os.path.join(self.data_dir, "train_labels.pt"))
+            else:
+                train_labels = torch.zeros((train_codes.size()[0]))
+        else:
+            train_codes, train_labels = self.train_codes, self.train_labels
         self._data_dim = train_codes.shape[1]
         train_labels =torch.tensor(train_labels)
         train_set = TensorDatasetWrapper(train_codes, train_labels)
@@ -362,22 +363,22 @@ class CustomDataset(MyDataset):
         return train_set
     #
     def get_test_data(self):
-        # try:
-        #     test_codes = torch.load(os.path.join(self.data_dir, "test_data.pt"))
-        #     if self.args.use_labels_for_eval:
-        #         test_labels = torch.load(os.path.join(self.data_dir, "test_labels.pt"))
-        #     else:
-        #         test_labels = torch.zeros((test_codes.size()[0]))
-        # except FileNotFoundError:
-        #     print("Test data not found! running only with train data")
-        #     return TensorDatasetWrapper(torch.empty(0), torch.empty(0))
-        #
-        # if self.args.transform_input_data:
-        #     test_codes = transform_embeddings(self.args.transform_input_data, test_codes)
+        if self.args.dataset != "ogbn-arxiv":
+            try:
+                test_codes = torch.load(os.path.join(self.data_dir, "test_data.pt"))
+                if self.args.use_labels_for_eval:
+                    test_labels = torch.load(os.path.join(self.data_dir, "test_labels.pt"))
+                else:
+                    test_labels = torch.zeros((test_codes.size()[0]))
+            except FileNotFoundError:
+                print("Test data not found! running only with train data")
+                return TensorDatasetWrapper(torch.empty(0), torch.empty(0))
 
-        # test_codes, adj, test_labels, n, k, d = load_data_ogb(self.args)
-        # test_labels = torch.tensor(test_labels)
-        test_codes, test_labels = self.train_codes, self.train_labels
+            if self.args.transform_input_data:
+                test_codes = transform_embeddings(self.args.transform_input_data, test_codes)
+        else:
+            print("Loading test data from OGB")
+            test_codes, test_labels = self.train_codes, self.train_labels
         test_set = TensorDatasetWrapper(test_codes, test_labels)
         del test_codes
         del test_labels
