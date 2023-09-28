@@ -1,0 +1,5 @@
+data/*
+final_models/*
+pretrain_models/*
+results/*
+*.pyc
