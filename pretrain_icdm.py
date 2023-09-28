@@ -38,7 +38,7 @@ def train(args=None):
 
     # to device
     x, adj, disc_y, model = map(lambda tmp: tmp.to(args.device), [x, adj, disc_y, model])
-    
+
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -98,7 +98,7 @@ def train(args=None):
     # assignments = cluster_ids_x.cpu().numpy()
     centroids = kmeans_mus.cpu().numpy()
     model.cluster_center.data = torch.Tensor(kmeans_mus).to(args.device)
-    print(centroids.shape)
+    # print(centroids.shape)
     torch.save(model.state_dict(), "./pretrain_models/DinkNet_" + args.dataset + f"_{k}" + ".pt")
 
 
