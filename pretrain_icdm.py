@@ -6,7 +6,7 @@ from tqdm import tqdm
 from model import DinkNet, DinkNet_dgl
 from kmeans import kmeans as GPU_KMeans
 import torch.nn as nn
-# from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans
 from kmeans_pytorch import kmeans
 import pandas as pd
 
@@ -89,15 +89,18 @@ def train(args=None):
 
     model.eval()
     h = model.embed(x, adj)
+    torch.save(h.detach().cpu(), "./pretrain_emb/DinkNet_" + args.dataset + f"_{args.hid_units}_" + ".pt")
     print(f"Init Kmeans center, k = {k}")
-    _, kmeans_mus = GPU_KMeans(X=h.detach(), num_clusters=k, device=torch.device(args.device), tol=0.1)
+    # _, kmeans_mus = GPU_KMeans(X=h.detach(), num_clusters=k, device=torch.device(args.device), tol=0.0001)
     # cluster_ids_x, cluster_centers = kmeans(
     # X=h, num_clusters=k, distance='euclidean', device=torch.device(args.device))
-    # cluster = KMeans(n_clusters=k).fit(h.cpu().detach().numpy())
-    # centroids = cluster_centers.cpu().numpy()
-    # assignments = cluster_ids_x.cpu().numpy()
-    centroids = kmeans_mus.cpu().numpy()
-    model.cluster_center.data = torch.Tensor(kmeans_mus).to(args.device)
+    cluster = KMeans(n_clusters=k, verbose=1).fit(h.cpu().detach().numpy())
+    centroids = cluster.cluster_centers_
+    assignments = cluster.labels_
+
+    model.cluster_center.data = torch.Tensor(centroids).to(args.device)
+    # centroids = kmeans_mus.cpu().numpy()
+    # model.cluster_center.data = torch.Tensor(kmeans_mus).to(args.device)
     # print(centroids.shape)
     torch.save(model.state_dict(), "./pretrain_models/DinkNet_" + args.dataset + f"_{k}" + ".pt")
 

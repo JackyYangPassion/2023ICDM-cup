@@ -4,6 +4,7 @@ import argparse
 from utils import *
 from tqdm import tqdm
 from model import DinkNet, DinkNet_dgl
+import uuid
 
 def compute_data_covs_hard_assignment(labels, codes, K, mus, prior):
     covs = []
@@ -39,7 +40,7 @@ def train(args=None):
     elif args.dataset in ["icdm"]:
         x, adj, y, n, k, d = load_icdm_data()
         k = args.k
-        print(x.shape)
+        # print(x.shape)
         
     # label of discriminative task
     disc_y = torch.cat((torch.ones(n), torch.zeros(n)), 0)
@@ -61,8 +62,14 @@ def train(args=None):
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-    best_acc = 0
-
+    best_loss = 99999
+    patience = 10
+    count = 0
+    uid = str(uuid.uuid1()).split("-")[0]
+    check_path = f"./check_points/{uid}"
+    if not os.path.exists(check_path):
+        os.mkdir(check_path)
+        check_path = f"{check_path}/model.pt"
     # training
     if args.wandb:
         if not os.path.exists("./wandb/"):
@@ -84,33 +91,22 @@ def train(args=None):
         loss.backward()
         optimizer.step()
         print("Epoch: {:03d} | Loss: {:.4f}".format(epoch, loss.item()))
-        # evaluation
-        # if (epoch + 1) % args.eval_inter == 0:
-        #     model.eval()
-        #     y_hat = model.clustering(x, adj)
-
-        #     acc, nmi, ari, f1 = evaluation(y, y_hat)
-
-        #     if best_acc < acc:
-        #         best_acc = acc
-        #         torch.save(model.state_dict(), "./models/DinkNet_" + args.dataset + "_final.pt")
-
-        #     # logging
-        #     tqdm.write("epoch {:03d} ｜ acc:{:.2f} ｜ nmi:{:.2f} ｜ ari:{:.2f} ｜ f1:{:.2f}".format(epoch, acc, nmi, ari, f1))
-
-        #     if args.wandb:
-        #         wandb.log({"epoch": epoch, "loss": loss, "acc": acc, "nmi": nmi, "ari": ari, "f1": f1})
+        # if loss.item() < best_loss:
+        #     best_loss = loss.item()
+        #     torch.save(model.state_dict(), check_path)
         # else:
-
-        #     if args.wandb:
-        #         wandb.log({"epoch": epoch, "loss": loss})
+        #     count += 1
+        #     print(f"count: {count} out of {patience}")
+        #     if count > patience:
+        #         break
 
     # testing
+    # model.load_state_dict(torch.load(check_path))
     torch.save(model.state_dict(), "./final_models/DinkNet_" + args.dataset + f"_{k}.pt")
     model.eval()
     print("Testing on {} dataset".format(args.dataset))
     y_hat = model.clustering(x, adj)
-    with open("results/" + str(k)+ "_results.txt", "w") as file:
+    with open("results/" + str(k)+ f"_{args.dataset}_results.txt", "w") as file:
         for item in y_hat:
             file.write("%s\n" % item)
     # acc, nmi, ari, f1 = evaluation(y, y_hat)

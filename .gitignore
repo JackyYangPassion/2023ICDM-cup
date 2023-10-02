@@ -4,3 +4,5 @@ pretrain_models/*
 results/*
 *.pyc
 logs/*
+check_points/*
+pretrain_emb/*
