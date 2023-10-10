@@ -56,8 +56,10 @@ def train(args=None):
     # to device
     x, adj, disc_y, model = map(lambda tmp: tmp.to(args.device), [x, adj, disc_y, model])
 
+    final_postfix = f"pretrain_config-{args.postfix}_finetuning_config-{args.lr}_{args.epochs}_{args.k}"
+    
     # load pre-trained model parameter
-    model.load_state_dict(torch.load("./pretrain_models/DinkNet_{}_{}.pt".format(args.dataset, k)))
+    model.load_state_dict(torch.load("./pretrain_models/DinkNet_{}.pt".format(args.postfix)))
 
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -65,11 +67,11 @@ def train(args=None):
     best_loss = 99999
     patience = 10
     count = 0
-    uid = str(uuid.uuid1()).split("-")[0]
-    check_path = f"./check_points/{uid}"
-    if not os.path.exists(check_path):
-        os.mkdir(check_path)
-        check_path = f"{check_path}/model.pt"
+    # uid = str(uuid.uuid1()).split("-")[0]
+    # check_path = f"./check_points/{uid}"
+    # if not os.path.exists(check_path):
+    #     os.mkdir(check_path)
+    #     check_path = f"{check_path}/model.pt"
     # training
     if args.wandb:
         if not os.path.exists("./wandb/"):
@@ -102,11 +104,11 @@ def train(args=None):
 
     # testing
     # model.load_state_dict(torch.load(check_path))
-    torch.save(model.state_dict(), "./final_models/DinkNet_" + args.dataset + f"_{k}.pt")
+    torch.save(model.state_dict(), "./final_models/DinkNet_" + f"_{final_postfix}.pt")
     model.eval()
     print("Testing on {} dataset".format(args.dataset))
     y_hat = model.clustering(x, adj)
-    with open("results/" + str(k)+ f"_{args.dataset}_results.txt", "w") as file:
+    with open("results/" + f"DinkNet_{final_postfix}_results.txt", "w") as file:
         for item in y_hat:
             file.write("%s\n" % item)
     # acc, nmi, ari, f1 = evaluation(y, y_hat)
@@ -139,6 +141,7 @@ if __name__ == '__main__':
     parser.add_argument("--epochs", type=int, default=200, help="number of epochs")
     parser.add_argument("--eval_inter", type=int, default=10, help="interval of evaluation")
     parser.add_argument("--k", "-k", type=int, default=10, help="clusther_num")
+    parser.add_argument("--postfix", "-postfix", type=str, default="", help="postfix")
     args = parser.parse_args()
 
     train(args=args)

@@ -6,3 +6,4 @@ results/*
 logs/*
 check_points/*
 pretrain_emb/*
+results_kmeans/*
