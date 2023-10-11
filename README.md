@@ -1,3 +1,8 @@
+# ICDM Dink-Net
+
+`./scripts/submit_finetuning.sh`
+
+```
 K_LIST="5 10 15 20 25"
 N_HID_LIST="64 128 256 512"
 N_LAYER_LIST="1 2 3 4"
@@ -35,3 +40,5 @@ for DATA in $DATA_LIST; do
         done
     done
 done
+
+```
