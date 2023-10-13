@@ -251,7 +251,7 @@ def main(args):
     best_t = 0
     counts = 0
     model_path = f"{save_path}/finetune_model.pt"
-    for epoch in range(args.n_classifier_epochs):
+    for epoch in tqdm(range(args.n_classifier_epochs)):
         ggd.train()
         optimizer.zero_grad()
         
