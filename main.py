@@ -1,4 +1,5 @@
 import argparse, time
+import datetime
 import json
 import numpy as np
 import networkx as nx
@@ -19,6 +20,26 @@ from utils import evaluation
 from kmeans_pytorch import kmeans
 from sklearn.cluster import KMeans
 from tqdm import tqdm
+import wandb
+
+
+def setup_seed(seed):
+    """
+    fix the random seed.
+    args:
+        seed: the random seed
+    returns:
+        none
+    """
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.manual_seed(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    return None
 
 def aug_feature_dropout(input_feat, drop_percent=0.2):
     # aug_input_feat = copy.deepcopy((input_feat.squeeze(0)))
@@ -151,8 +172,9 @@ def main(args):
     best_t = 0
     counts = 0
     dur = []
-
-    tag = f"{args.dataset}_{args.K}_{args.gnn_encoder}_{args.num_hop}_{args.n_hidden}_{args.output_dim}_{args.n_layers}_{args.dropout}_{args.proj_layers}_{args.ggd_lr}_{args.weight_decay}_{args.drop_feat}_{args.tradeoff}_{args.classifier_lr}_{args.n_ggd_epochs}_{args.n_classifier_epochs}_{args.patience}"
+    
+    start_time = datetime.now().strftime("%d_%m_%Y_%H_%M_%S")
+    tag = f"{args.dataset}_{args.K}_{args.gnn_encoder}_{args.num_hop}_{args.n_hidden}_{args.output_dim}_{args.n_layers}_{args.dropout}_{args.proj_layers}_{args.ggd_lr}_{args.weight_decay}_{args.drop_feat}_{args.tradeoff}_{args.classifier_lr}_{args.n_ggd_epochs}_{args.n_classifier_epochs}_{start_time}"
 
     save_path = os.path.join("./results", tag)
     if not os.path.exists(save_path):
@@ -163,6 +185,12 @@ def main(args):
         json.dump(args.__dict__, file, indent=4)
         
     model_path = f"{save_path}/pretrain_model.pt"
+    
+    if args.wandb:
+        wandb.init(config=args,
+                   project="ICML23_DDG",
+                   name=tag)
+    
     if args.pretrain:
         # Pre-train stage
         for epoch in range(args.n_ggd_epochs):
@@ -195,7 +223,7 @@ def main(args):
 
             if epoch >= 3:
                 dur.append(time.time() - t0)
-
+            wandb.log({"pretrain_loss": loss.item()}, step=epoch)
             print("Epoch {:05d} | Time(s) {:.4f} | Loss {:.4f} | "
                 "ETputs(KTEPS) {:.2f}".format(epoch, np.mean(dur), loss.item(),
                                                 n_edges / np.mean(dur) / 1000))
@@ -276,7 +304,7 @@ def main(args):
         loss.backward()
         optimizer.step()
         print("Epoch: {:03d} | Loss: {:.4f}".format(epoch, loss.item()))
-        
+        wandb.log({"finetune_loss": loss.item()}, step=epoch)
         # if loss < best:
         #     best = loss
         #     best_t = epoch
@@ -355,6 +383,7 @@ if __name__ == '__main__':
     parser.add_argument("--num_hop", type=int, default=10,
                         help="number of k for sgc")
     parser.add_argument("--tradeoff", type=float, default=1e-10, help="tradeoff parameter")
+    parser.add_argument("--seed", type=int, default=2023, help="random seed")
     parser.add_argument('--data_root_dir', type=str, default='./data',
                            help="dir_path for saving graph data. Note that this model use DGL loader so do not mix up with the dir_path for the Pyg one. Use 'default' to save datasets at current folder.")
     parser.add_argument('--dataset_name', type=str, default='icdm2023_session1_test',
@@ -362,9 +391,12 @@ if __name__ == '__main__':
     parser.add_argument("--cpu_kmeans", default=False, type=bool)
     parser.add_argument("--pretrain", default=False, type=bool)
     parser.add_argument("--pretrain_only", default=False, type=bool)
+    parser.add_argument("--wandb", default=False, type=bool, help="enable wandb")
     parser.set_defaults(self_loop=False)
     args = parser.parse_args()
     print(args)
+    # setup random seed
+    setup_seed(args.seed)
     main(args)
     # accs = []
     # for i in range(args.n_trails):
