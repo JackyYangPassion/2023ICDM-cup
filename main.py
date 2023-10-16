@@ -1,5 +1,5 @@
 import argparse, time
-import datetime
+from datetime import datetime
 import json
 import numpy as np
 import networkx as nx
@@ -268,7 +268,7 @@ def main(args):
     else:
         ggd.load_state_dict(torch.load(model_path))
     
-    if not args.pretrain_only:
+    if args.pretrain_only:
         return
     
     # Finetuning
@@ -389,7 +389,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_name', type=str, default='icdm2023_session1_test',
                         help='icdm2023_session1_test,ogbn-arxiv')
     parser.add_argument("--cpu_kmeans", default=False, type=bool)
-    parser.add_argument("--pretrain", default=False, type=bool)
+    parser.add_argument("--pretrain", default=True, type=bool)
     parser.add_argument("--pretrain_only", default=False, type=bool)
     parser.add_argument("--wandb", default=False, type=bool, help="enable wandb")
     parser.set_defaults(self_loop=False)

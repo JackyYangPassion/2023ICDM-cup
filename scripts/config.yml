@@ -1,0 +1,27 @@
+program: main.py
+method: grid
+parameters:
+  dataset:
+    value: "icdm"
+  K:
+    values: [10, 25]
+  ggd-lr:
+    value: 0.0001
+  classifier-lr:
+    value: 0.0001
+  n-hidden:
+    values: [64, 128, 256]
+  n-layers:
+    values: [2, 3, 4]
+  proj_layers:
+    value: 1
+  n-ggd-epochs:
+    values: [1, 10]
+  n-classifier-epochs:
+    values: [30, 100]
+  gnn_encoder:
+    value: "gcn"
+  proj_layers:
+    value: 1
+  wandb:
+    value: True
