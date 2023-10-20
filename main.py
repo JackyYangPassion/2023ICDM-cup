@@ -21,7 +21,7 @@ from kmeans_pytorch import kmeans
 from sklearn.cluster import KMeans
 from tqdm import tqdm
 import wandb
-
+import distutils.util
 
 def setup_seed(seed):
     """
@@ -265,6 +265,8 @@ def main(args):
         
         ggd.cluster_center.data = torch.Tensor(cluster_centers).cuda()
         torch.save(ggd.state_dict(), model_path)
+    elif args.pre_train_weight_path != "":
+        ggd.load_state_dict(torch.load(args.pre_train_weight_path))
     else:
         ggd.load_state_dict(torch.load(model_path))
     
@@ -333,6 +335,8 @@ def main(args):
         for item in y_hat:
             file.write("%s\n" % item)
     print("Results saved at: ", save_path)
+    wandb.save(f"{save_path}/final_results_{tag}.txt")
+    wandb.save(f"{save_path}/pretrain_kmeans_results_{tag}.txt")
     
 def get_free_gpu():
     os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free >tmp')
@@ -388,10 +392,11 @@ if __name__ == '__main__':
                            help="dir_path for saving graph data. Note that this model use DGL loader so do not mix up with the dir_path for the Pyg one. Use 'default' to save datasets at current folder.")
     parser.add_argument('--dataset_name', type=str, default='icdm2023_session1_test',
                         help='icdm2023_session1_test,ogbn-arxiv')
-    parser.add_argument("--cpu_kmeans", default=False, type=bool)
-    parser.add_argument("--pretrain", default=True, type=bool)
-    parser.add_argument("--pretrain_only", default=False, type=bool)
-    parser.add_argument("--wandb", default=False, type=bool, help="enable wandb")
+    parser.add_argument("--cpu_kmeans", default=False, type=lambda x:bool(distutils.util.strtobool(x)))
+    parser.add_argument("--pretrain", default=True, type=lambda x:bool(distutils.util.strtobool(x)))
+    parser.add_argument("--pretrain_only", default=False, type=lambda x:bool(distutils.util.strtobool(x)))
+    parser.add_argument("--wandb", default=False, type=lambda x:bool(distutils.util.strtobool(x)), help="enable wandb")
+    parser.add_argument("--pre_train_weight_path", default="", type=str, help="pretrain checkpoint path")
     parser.set_defaults(self_loop=False)
     args = parser.parse_args()
     print(args)

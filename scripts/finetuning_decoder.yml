@@ -1,0 +1,31 @@
+program: main.py
+method: grid
+parameters:
+  dataset:
+    value: "icdm"
+  K:
+    value: 10
+  ggd-lr:
+    value: 0.0001
+  classifier-lr:
+    values: [0.0001, 0.0005, 0.001]
+  n-hidden:
+    value: 64
+  n-layers:
+    value: 4
+  proj_layers:
+    value: 1
+  n-ggd-epochs:
+    value: 1
+  n-classifier-epochs:
+    values: [30, 100, 200]
+  gnn_encoder:
+    value: "gcn"
+  proj_layers:
+    value: 1
+  wandb:
+    value: True
+  pretrain:
+    value: False
+  pre_train_weight_path:
+    value: "results/icdm_10_gcn_10_64_10_4_0.0_1_0.0001_0.0_0.1_1e-10_0.0001_1_100_16_10_2023_14_33_26/pretrain_model.pt"
