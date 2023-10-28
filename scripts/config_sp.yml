@@ -1,4 +1,4 @@
-program: main.py
+program: main_sp.py
 method: grid
 parameters:
   dataset:
@@ -10,22 +10,20 @@ parameters:
   classifier-lr:
     value: 0.0005
   n-hidden:
-    value: 64
+    values: [64,512,1024,1500]
   n-layers:
     value: 4
   proj_layers:
     value: 1
   n-ggd-epochs:
-    value: 1
+    values: [1, 10, 30]
   n-classifier-epochs:
     value: 300
   gnn_encoder:
     value: "gcn"
   proj_layers:
     value: 1
+  batch_size:
+    value: 4096
   wandb:
     value: True
-  pretrain:
-    value: False
-  pre_train_weight_path:
-    value: "results/icdm_10_gcn_10_64_10_4_0.0_1_0.0001_0.0_0.1_1e-10_0.0001_1_100_16_10_2023_14_33_26/pretrain_model.pt"

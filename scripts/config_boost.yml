@@ -21,11 +21,9 @@ parameters:
     value: 300
   gnn_encoder:
     value: "gcn"
-  proj_layers:
-    value: 1
+  power:
+    value: 15
   wandb:
     value: True
-  pretrain:
-    value: False
-  pre_train_weight_path:
-    value: "results/icdm_10_gcn_10_64_10_4_0.0_1_0.0001_0.0_0.1_1e-10_0.0001_1_100_16_10_2023_14_33_26/pretrain_model.pt"
+  seed:
+    values: [42,12345,67890,13579,24680,18273645,31415926,27182818,11235813,10101010,20202020,30303030,40404040,50505050,60606060,70707070,80808080,90909090,10000000]

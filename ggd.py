@@ -62,14 +62,14 @@ class Encoder(nn.Module):
         return features
 
 class GGD(nn.Module):
-    def __init__(self, g, in_feats, n_hidden, out_put, n_layers, activation, dropout, proj_layers, gnn_encoder, num_hop, n_cluster, tradeoff):
+    def __init__(self, g, in_feats, n_hidden, out_put, n_layers, activation, dropout, proj_layers, gnn_encoder, num_hop, n_cluster, tradeoff, power):
         super(GGD, self).__init__()
         self.encoder = Encoder(g, in_feats, n_hidden, n_layers, activation, dropout, gnn_encoder, num_hop)
         self.mlp = torch.nn.ModuleList()
         for i in range(proj_layers):
             self.mlp.append(nn.Linear(n_hidden, out_put))
         self.loss = nn.BCEWithLogitsLoss()
-        
+        self.power = power
         self.cluster_center = torch.nn.Parameter(torch.Tensor(n_cluster, n_hidden))
 
         self.tradeoff = tradeoff
@@ -101,7 +101,7 @@ class GGD(nn.Module):
         degs = g.in_degrees().float().clamp(min=1)
         norm = torch.pow(degs, -0.5)
         norm = norm.to(h_1.device).unsqueeze(1)
-        for _ in range(10):
+        for _ in range(self.power):
             feat = feat * norm
             g.ndata['h2'] = feat
             g.update_all(fn.copy_u('h2', 'm'),

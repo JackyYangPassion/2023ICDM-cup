@@ -2,26 +2,26 @@ import argparse, time
 from datetime import datetime
 import json
 import numpy as np
-import networkx as nx
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import dgl
-from dgl import DGLGraph
-from dgl.data import register_data_args, load_data
-from dgl.nn import EdgeWeightNorm
+from dgl.data import register_data_args
 import random
 import copy
 from ggd import GGD
 from ogb.nodeproppred import DglNodePropPredDataset, Evaluator
 import os
 from sklearn import preprocessing as sk_prep
-from utils import evaluation
 from kmeans_pytorch import kmeans
 from sklearn.cluster import KMeans
 from tqdm import tqdm
 import wandb
 import distutils.util
+import pickle
+import dgl.function as fn
+from kmodes.kmodes import KModes
+
+N_CPUS = int(os.environ['SLURM_CPUS_PER_TASK']) if 'SLURM_CPUS_PER_TASK' in os.environ else 1
 
 def setup_seed(seed):
     """
@@ -49,6 +49,18 @@ def aug_feature_dropout(input_feat, drop_percent=0.2):
     aug_input_feat[:, drop_idx] = 0
 
     return aug_input_feat
+
+def kmodes_decoder(embed, num_kmeans=50,num_cluster_k_means=10):
+    all_labels = []
+    for i in range(num_kmeans):
+        cluster_ids_x, cluster_centers = kmeans(
+            X=embed, num_clusters=num_cluster_k_means, distance='euclidean', device=torch.device('cuda:0'))
+        all_labels.append(cluster_ids_x)
+    all = torch.stack(all_labels).t()
+    km = KModes(n_clusters=num_cluster_k_means, n_jobs=N_CPUS)
+    cluster_ids_x = km.fit_predict(all.cpu().numpy(), max_iter=300, random_state=42)
+
+    return cluster_ids_x, km.cluster_centroids_
 
 def evaluate(model, features, labels, mask):
     model.eval()
@@ -155,7 +167,7 @@ def main(args):
               args.dropout,
               args.proj_layers,
               args.gnn_encoder,
-              args.num_hop, n_classes, args.tradeoff)
+              args.num_hop, n_classes, args.tradeoff, args.power)
 
     if cuda:
         ggd.cuda()
@@ -174,7 +186,7 @@ def main(args):
     dur = []
     
     start_time = datetime.now().strftime("%d_%m_%Y_%H_%M_%S")
-    tag = f"{args.dataset}_{args.K}_{args.gnn_encoder}_{args.num_hop}_{args.n_hidden}_{args.output_dim}_{args.n_layers}_{args.dropout}_{args.proj_layers}_{args.ggd_lr}_{args.weight_decay}_{args.drop_feat}_{args.tradeoff}_{args.classifier_lr}_{args.n_ggd_epochs}_{args.n_classifier_epochs}_{start_time}"
+    tag = f"{args.dataset}_{args.K}_{args.gnn_encoder}_{args.num_hop}_{args.n_hidden}_{args.output_dim}_{args.n_layers}_{args.dropout}_{args.proj_layers}_{args.ggd_lr}_{args.weight_decay}_{args.drop_feat}_{args.tradeoff}_{args.classifier_lr}_{args.n_ggd_epochs}_{args.n_classifier_epochs}_{args.power}_{args.kmeans}_{args.num_kmeans}_{start_time}"
 
     save_path = os.path.join("./results", tag)
     if not os.path.exists(save_path):
@@ -223,7 +235,8 @@ def main(args):
 
             if epoch >= 3:
                 dur.append(time.time() - t0)
-            wandb.log({"pretrain_loss": loss.item()}, step=epoch)
+            if args.wandb:
+                wandb.log({"pretrain_loss": loss.item()}, step=epoch)
             print("Epoch {:05d} | Time(s) {:.4f} | Loss {:.4f} | "
                 "ETputs(KTEPS) {:.2f}".format(epoch, np.mean(dur), loss.item(),
                                                 n_edges / np.mean(dur) / 1000))
@@ -249,10 +262,13 @@ def main(args):
         print(f"Init Kmeans center, k = {n_classes}")
 
         # CPU kmeans
-        if args.cpu_kmeans:
+        if args.kmeans == "cpu":
             cluster = KMeans(n_clusters=n_classes, verbose=1, n_init="auto").fit(embeds.cpu().detach().numpy())
             cluster_centers = cluster.cluster_centers_
             results = cluster.labels_
+        elif args.kmeans == "kmodes":
+            cluster_ids_x, cluster_centers = kmodes_decoder(embeds, num_kmeans=args.num_kmeans,num_cluster_k_means=n_classes)
+            results = cluster_ids_x
         else:
             # GPU kemans
             cluster_ids_x, cluster_centers = kmeans(
@@ -306,7 +322,8 @@ def main(args):
         loss.backward()
         optimizer.step()
         print("Epoch: {:03d} | Loss: {:.4f}".format(epoch, loss.item()))
-        wandb.log({"finetune_loss": loss.item()}, step=epoch)
+        if args.wandb:
+            wandb.log({"finetune_loss": loss.item()}, step=epoch)
         # if loss < best:
         #     best = loss
         #     best_t = epoch
@@ -335,8 +352,9 @@ def main(args):
         for item in y_hat:
             file.write("%s\n" % item)
     print("Results saved at: ", save_path)
-    wandb.save(f"{save_path}/final_results_{tag}.txt")
-    wandb.save(f"{save_path}/pretrain_kmeans_results_{tag}.txt")
+    if args.wandb:
+        wandb.save(f"{save_path}/final_results_{tag}.txt")
+        wandb.save(f"{save_path}/pretrain_kmeans_results_{tag}.txt")
     
 def get_free_gpu():
     os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free >tmp')
@@ -387,15 +405,18 @@ if __name__ == '__main__':
     parser.add_argument("--num_hop", type=int, default=10,
                         help="number of k for sgc")
     parser.add_argument("--tradeoff", type=float, default=1e-10, help="tradeoff parameter")
+    parser.add_argument("--power", type=int, default=10)
+    parser.add_argument("--num_kmeans", type=int, default=2)
     parser.add_argument("--seed", type=int, default=2023, help="random seed")
     parser.add_argument('--data_root_dir', type=str, default='./data',
                            help="dir_path for saving graph data. Note that this model use DGL loader so do not mix up with the dir_path for the Pyg one. Use 'default' to save datasets at current folder.")
     parser.add_argument('--dataset_name', type=str, default='icdm2023_session1_test',
                         help='icdm2023_session1_test,ogbn-arxiv')
-    parser.add_argument("--cpu_kmeans", default=False, type=lambda x:bool(distutils.util.strtobool(x)))
+    parser.add_argument("--kmeans", default="gpu", choices=["gpu", "cpu", "kmodes"])
     parser.add_argument("--pretrain", default=True, type=lambda x:bool(distutils.util.strtobool(x)))
     parser.add_argument("--pretrain_only", default=False, type=lambda x:bool(distutils.util.strtobool(x)))
     parser.add_argument("--wandb", default=False, type=lambda x:bool(distutils.util.strtobool(x)), help="enable wandb")
+    parser.add_argument("--save_pretrain_graph", default=False, type=lambda x:bool(distutils.util.strtobool(x)))
     parser.add_argument("--pre_train_weight_path", default="", type=str, help="pretrain checkpoint path")
     parser.set_defaults(self_loop=False)
     args = parser.parse_args()

@@ -25,7 +25,5 @@ parameters:
     value: 1
   wandb:
     value: True
-  pretrain:
-    value: False
-  pre_train_weight_path:
-    value: "results/icdm_10_gcn_10_64_10_4_0.0_1_0.0001_0.0_0.1_1e-10_0.0001_1_100_16_10_2023_14_33_26/pretrain_model.pt"
+  seed:
+    values: [1, 42, 666, 777, 1234, 2023]
