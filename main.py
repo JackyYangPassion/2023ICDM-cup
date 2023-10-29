@@ -158,16 +158,26 @@ def main(args):
 
     g = g.to(free_gpu_id)
     # create GGD model
+    
+    if args.activation == "relu":
+        activation = nn.ReLU()
+    elif args.activation == "prelu":
+        activation = nn.PReLU(args.n_hidden)
+    elif args.activation == "leakyrelu":
+        activation = nn.LeakyReLU()
+    else:
+        activation = None
+    
     ggd = GGD(g,
               in_feats,
               args.n_hidden,
               args.output_dim,
               args.n_layers,
-              nn.PReLU(args.n_hidden),
+              activation,
               args.dropout,
               args.proj_layers,
               args.gnn_encoder,
-              args.num_hop, n_classes, args.tradeoff, args.power)
+              args.num_hop, n_classes, args.tradeoff, args.power, args.cluster_loss_weight)
 
     if cuda:
         ggd.cuda()
@@ -186,7 +196,7 @@ def main(args):
     dur = []
     
     start_time = datetime.now().strftime("%d_%m_%Y_%H_%M_%S")
-    tag = f"{args.dataset}_{args.K}_{args.gnn_encoder}_{args.num_hop}_{args.n_hidden}_{args.output_dim}_{args.n_layers}_{args.dropout}_{args.proj_layers}_{args.ggd_lr}_{args.weight_decay}_{args.drop_feat}_{args.tradeoff}_{args.classifier_lr}_{args.n_ggd_epochs}_{args.n_classifier_epochs}_{args.power}_{args.kmeans}_{args.num_kmeans}_{start_time}"
+    tag = f"{args.dataset}_{args.K}_{args.gnn_encoder}_{args.num_hop}_{args.n_hidden}_{args.output_dim}_{args.n_layers}_{args.dropout}_{args.proj_layers}_{args.ggd_lr}_{args.weight_decay}_{args.drop_feat}_{args.tradeoff}_{args.classifier_lr}_{args.n_ggd_epochs}_{args.n_classifier_epochs}_{args.power}_{args.kmeans}_{args.postfix}_{start_time}"
 
     save_path = os.path.join("./results", tag)
     if not os.path.exists(save_path):
@@ -407,6 +417,8 @@ if __name__ == '__main__':
     parser.add_argument("--tradeoff", type=float, default=1e-10, help="tradeoff parameter")
     parser.add_argument("--power", type=int, default=10)
     parser.add_argument("--num_kmeans", type=int, default=2)
+    parser.add_argument("--activation", type=str, choices=["relu", "prelu", "leakyrelu", "none"], default="prelu")
+    parser.add_argument("--cluster_loss_weight", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=2023, help="random seed")
     parser.add_argument('--data_root_dir', type=str, default='./data',
                            help="dir_path for saving graph data. Note that this model use DGL loader so do not mix up with the dir_path for the Pyg one. Use 'default' to save datasets at current folder.")
@@ -418,6 +430,7 @@ if __name__ == '__main__':
     parser.add_argument("--wandb", default=False, type=lambda x:bool(distutils.util.strtobool(x)), help="enable wandb")
     parser.add_argument("--save_pretrain_graph", default=False, type=lambda x:bool(distutils.util.strtobool(x)))
     parser.add_argument("--pre_train_weight_path", default="", type=str, help="pretrain checkpoint path")
+    parser.add_argument("--postfix", default="", type=str)
     parser.set_defaults(self_loop=False)
     args = parser.parse_args()
     print(args)

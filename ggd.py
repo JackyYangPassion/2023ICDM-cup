@@ -62,7 +62,7 @@ class Encoder(nn.Module):
         return features
 
 class GGD(nn.Module):
-    def __init__(self, g, in_feats, n_hidden, out_put, n_layers, activation, dropout, proj_layers, gnn_encoder, num_hop, n_cluster, tradeoff, power):
+    def __init__(self, g, in_feats, n_hidden, out_put, n_layers, activation, dropout, proj_layers, gnn_encoder, num_hop, n_cluster, tradeoff, power, cluster_loss_weight):
         super(GGD, self).__init__()
         self.encoder = Encoder(g, in_feats, n_hidden, n_layers, activation, dropout, gnn_encoder, num_hop)
         self.mlp = torch.nn.ModuleList()
@@ -73,6 +73,7 @@ class GGD(nn.Module):
         self.cluster_center = torch.nn.Parameter(torch.Tensor(n_cluster, n_hidden))
 
         self.tradeoff = tradeoff
+        self.cluster_loss_weight = cluster_loss_weight
 
     def forward(self, features, labels, loss_func):
         h_1 = self.encoder(features, corrupt=False)
@@ -131,7 +132,7 @@ class GGD(nn.Module):
         sample_center_distance = self.dis_fun(h, self.cluster_center)
         center_distance = self.dis_fun(self.cluster_center, self.cluster_center)
         self.no_diag(center_distance, self.cluster_center.shape[0])
-        clustering_loss = sample_center_distance.mean() - center_distance.mean()
+        clustering_loss = self.cluster_loss_weight * sample_center_distance.mean() - center_distance.mean()
 
         return clustering_loss, sample_center_distance
 
