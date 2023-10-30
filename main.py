@@ -8,20 +8,77 @@ import dgl
 from dgl.data import register_data_args
 import random
 import copy
-from ggd import GGD
+from ggd import GGD, GGD_BGRL
 from ogb.nodeproppred import DglNodePropPredDataset, Evaluator
 import os
 from sklearn import preprocessing as sk_prep
 from kmeans_pytorch import kmeans
 from sklearn.cluster import KMeans
 from tqdm import tqdm
-import wandb
+# import wandb
 import distutils.util
 import pickle
 import dgl.function as fn
 from kmodes.kmodes import KModes
+from munkres import Munkres
+from collections import Counter
+from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import adjusted_rand_score as ari_score
+from sklearn.metrics.cluster import normalized_mutual_info_score as nmi_score
 
 N_CPUS = int(os.environ['SLURM_CPUS_PER_TASK']) if 'SLURM_CPUS_PER_TASK' in os.environ else 1
+
+def evaluation(y_true, y_pred):
+    """
+    evaluate the clustering performance.
+    args:
+        y_true: ground truth
+        y_pred: prediction
+    returns:
+        acc: accuracy
+        nmi: normalized mutual information
+        ari: adjust rand index
+        f1: f1 score
+    """
+    nmi = nmi_score(y_true, y_pred, average_method='arithmetic')
+    ari = ari_score(y_true, y_pred)
+
+    y_true = y_true - np.min(y_true)
+    l1 = list(set(y_true))
+    num_class1 = len(l1)
+    l2 = list(set(y_pred))
+    num_class2 = len(l2)
+    ind = 0
+    if num_class1 != num_class2:
+        for i in l1:
+            if i in l2:
+                pass
+            else:
+                y_pred[ind] = i
+                ind += 1
+    l2 = list(set(y_pred))
+    num_class2 = len(l2)
+    if num_class1 != num_class2:
+        print('error')
+        return
+    cost = np.zeros((num_class1, num_class2), dtype=int)
+    for i, c1 in enumerate(l1):
+        mps = [i1 for i1, e1 in enumerate(y_true) if e1 == c1]
+        for j, c2 in enumerate(l2):
+            mps_d = [i1 for i1 in mps if y_pred[i1] == c2]
+            cost[i][j] = len(mps_d)
+    m = Munkres()
+    cost = cost.__neg__().tolist()
+    indexes = m.compute(cost)
+    new_predict = np.zeros(len(y_pred))
+    for i, c in enumerate(l1):
+        c2 = l2[indexes[i][1]]
+        ai = [ind for ind, elm in enumerate(y_pred) if elm == c2]
+        new_predict[ai] = c
+    acc = accuracy_score(y_true, new_predict)
+    f1 = f1_score(y_true, new_predict, average='macro')
+    acc, nmi, ari, f1 = map(lambda x: round(x * 100, 2), [acc, nmi, ari, f1])
+    return acc, nmi, ari, f1
 
 def setup_seed(seed):
     """
@@ -158,7 +215,6 @@ def main(args):
 
     g = g.to(free_gpu_id)
     # create GGD model
-    
     if args.activation == "relu":
         activation = nn.ReLU()
     elif args.activation == "prelu":
@@ -167,11 +223,11 @@ def main(args):
         activation = nn.LeakyReLU()
     else:
         activation = None
-    
-    ggd = GGD(g,
+        
+    ggd = GGD_BGRL(g,
               in_feats,
               args.n_hidden,
-              args.output_dim,
+              args.n_hidden,
               args.n_layers,
               activation,
               args.dropout,
@@ -185,6 +241,9 @@ def main(args):
     ggd_optimizer = torch.optim.AdamW(ggd.parameters(),
                                      lr=args.ggd_lr,
                                      weight_decay=args.weight_decay)
+    scheduler = lambda epoch: epoch / 1000 if epoch <= 1000 \
+        else (1 + np.cos((epoch - 1000) * np.pi / (args.n_ggd_epochs - 1000))) * 0.5
+    _scheduler = torch.optim.lr_scheduler.LambdaLR(ggd_optimizer, lr_lambda=scheduler)
 
     b_xent = nn.BCEWithLogitsLoss()
 
@@ -196,7 +255,7 @@ def main(args):
     dur = []
     
     start_time = datetime.now().strftime("%d_%m_%Y_%H_%M_%S")
-    tag = f"{args.dataset}_{args.K}_{args.gnn_encoder}_{args.num_hop}_{args.n_hidden}_{args.output_dim}_{args.n_layers}_{args.dropout}_{args.proj_layers}_{args.ggd_lr}_{args.weight_decay}_{args.drop_feat}_{args.tradeoff}_{args.classifier_lr}_{args.n_ggd_epochs}_{args.n_classifier_epochs}_{args.power}_{args.kmeans}_{args.postfix}_{start_time}"
+    tag = f"{args.dataset}_{args.K}_{args.gnn_encoder}_{args.num_hop}_{args.n_hidden}_{args.output_dim}_{args.n_layers}_{args.dropout}_{args.proj_layers}_{args.ggd_lr}_{args.weight_decay}_{args.drop_feat}_{args.tradeoff}_{args.classifier_lr}_{args.n_ggd_epochs}_{args.n_bgrl_epochs}_{args.n_classifier_epochs}_{args.power}_{args.kmeans}_{args.postfix}_{start_time}"
 
     save_path = os.path.join("./results", tag)
     if not os.path.exists(save_path):
@@ -208,14 +267,28 @@ def main(args):
         
     model_path = f"{save_path}/pretrain_model.pt"
     
-    if args.wandb:
-        wandb.init(config=args,
-                   project="ICML23_DDG",
-                   name=tag)
-    
+    # if args.wandb:
+    #     wandb.init(config=args,
+    #                project="ICML23_DDG",
+    #                name=tag)
+    #
     if args.pretrain:
         # Pre-train stage
+        # GGD pretrain
         for epoch in range(args.n_ggd_epochs):
+            ggd_optimizer.zero_grad()
+
+            lbl_1 = torch.ones(1, g.num_nodes())
+            lbl_2 = torch.zeros(1, g.num_nodes())
+            lbl = torch.cat((lbl_1, lbl_2), 1).cuda()
+
+            aug_feat = aug_feature_dropout(features, args.drop_feat)
+            loss = ggd.ggd_forward(aug_feat.cuda(), lbl, b_xent)
+            loss.backward()
+            ggd_optimizer.step()
+        
+        
+        for epoch in range(args.n_bgrl_epochs):
             ggd.train()
             if epoch >= 3:
                 t0 = time.time()
@@ -228,9 +301,13 @@ def main(args):
 
             aug_feat = aug_feature_dropout(features, args.drop_feat)
             loss = ggd(aug_feat.cuda(), lbl, b_xent)
+            # loss.backward()
+            # ggd_optimizer.step()
+            # self._optimizer.zero_grad()
             loss.backward()
             ggd_optimizer.step()
-
+            _scheduler.step()
+            ggd.update_moving_average()
             # if loss < best:
             #     best = loss
             #     best_t = epoch
@@ -245,8 +322,8 @@ def main(args):
 
             if epoch >= 3:
                 dur.append(time.time() - t0)
-            if args.wandb:
-                wandb.log({"pretrain_loss": loss.item()}, step=epoch)
+            # if args.wandb:
+            #     wandb.log({"pretrain_loss": loss.item()}, step=epoch)
             print("Epoch {:05d} | Time(s) {:.4f} | Loss {:.4f} | "
                 "ETputs(KTEPS) {:.2f}".format(epoch, np.mean(dur), loss.item(),
                                                 n_edges / np.mean(dur) / 1000))
@@ -285,9 +362,9 @@ def main(args):
             X=embeds, num_clusters=n_classes, distance='euclidean', device=torch.device('cuda:0'))
             results = cluster_ids_x.cpu().numpy()
             
-        with open(f"{save_path}/pretrain_kmeans_results_{tag}.txt", "w") as file:
-            for item in results:
-                file.write("%s\n" % item)
+        # with open(f"{save_path}/pretrain_kmeans_results_{tag}.txt", "w") as file:
+        #     for item in results:
+        #         file.write("%s\n" % item)
         
         ggd.cluster_center.data = torch.Tensor(cluster_centers).cuda()
         torch.save(ggd.state_dict(), model_path)
@@ -332,8 +409,8 @@ def main(args):
         loss.backward()
         optimizer.step()
         print("Epoch: {:03d} | Loss: {:.4f}".format(epoch, loss.item()))
-        if args.wandb:
-            wandb.log({"finetune_loss": loss.item()}, step=epoch)
+        # if args.wandb:
+        #     wandb.log({"finetune_loss": loss.item()}, step=epoch)
         # if loss < best:
         #     best = loss
         #     best_t = epoch
@@ -358,13 +435,14 @@ def main(args):
 
     embeds = torch.FloatTensor(embeds).cuda()
     y_hat = ggd.clustering(embeds)
+    print(evaluation(labels.cpu().numpy(), y_hat))
     with open(f"{save_path}/final_results_{tag}.txt", "w") as file:
         for item in y_hat:
             file.write("%s\n" % item)
     print("Results saved at: ", save_path)
-    if args.wandb:
-        wandb.save(f"{save_path}/final_results_{tag}.txt")
-        wandb.save(f"{save_path}/pretrain_kmeans_results_{tag}.txt")
+    # if args.wandb:
+    #     wandb.save(f"{save_path}/final_results_{tag}.txt")
+    #     wandb.save(f"{save_path}/pretrain_kmeans_results_{tag}.txt")
     
 def get_free_gpu():
     os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free >tmp')
@@ -392,7 +470,9 @@ if __name__ == '__main__':
                         help="classifier learning rate")
     parser.add_argument("--n-ggd-epochs", type=int, default=1,
                         help="number of training epochs")
-    parser.add_argument("--n-classifier-epochs", type=int, default=6000,
+    parser.add_argument("--n-bgrl-epochs", type=int, default=1000,
+                        help="number of training epochs")
+    parser.add_argument("--n-classifier-epochs", type=int, default=500,
                         help="number of training epochs")
     parser.add_argument("--n-hidden", type=int, default=256,
                         help="number of hidden gcn units")
@@ -422,7 +502,7 @@ if __name__ == '__main__':
     parser.add_argument("--seed", type=int, default=2023, help="random seed")
     parser.add_argument('--data_root_dir', type=str, default='./data',
                            help="dir_path for saving graph data. Note that this model use DGL loader so do not mix up with the dir_path for the Pyg one. Use 'default' to save datasets at current folder.")
-    parser.add_argument('--dataset_name', type=str, default='icdm2023_session1_test',
+    parser.add_argument('--dataset_name', type=str, default='ogbn-arxiv',
                         help='icdm2023_session1_test,ogbn-arxiv')
     parser.add_argument("--kmeans", default="gpu", choices=["gpu", "cpu", "kmodes"])
     parser.add_argument("--pretrain", default=True, type=lambda x:bool(distutils.util.strtobool(x)))
