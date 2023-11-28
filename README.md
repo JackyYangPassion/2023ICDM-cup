@@ -1,4 +1,4 @@
-# ICDM2023-Fast团队
+# ICDM2023
 
 ## Reproduce results
 `python main.py --K=10 --classifier-lr=0.0005 --dataset=icdm --ggd-lr=0.0001 --gnn_encoder=gcn --n-classifier-epochs=300 --n-ggd-epochs=1 --n-hidden=64 --n-layers=4 --power=15 --proj_layers=1 --seed=2023`
